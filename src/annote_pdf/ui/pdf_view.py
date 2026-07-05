@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QKeyEvent, QMouseEvent, QPen, QPixmap
+from PySide6.QtGui import QBrush, QColor, QKeyEvent, QMouseEvent, QPen, QPixmap
 from PySide6.QtWidgets import QGraphicsRectItem, QGraphicsScene, QGraphicsView
 
 from ..core.models import BBox
@@ -31,6 +31,8 @@ class PdfView(QGraphicsView):
         self.setBackgroundBrush(BACKGROUND_COLOR)
         self.zoom = 2.0
         self.pen_color = QColor("green")
+        self.draw_mode = "rect"  # "rect" ou "highlight"
+        self._pdf_document: PdfDocument | None = None
         self._page_tops: list[float] = []
         self._page_heights: list[float] = []
         self._bbox_items: list[BBoxItem] = []
@@ -44,6 +46,9 @@ class PdfView(QGraphicsView):
 
     def set_pen_color(self, color: QColor) -> None:
         self.pen_color = color
+
+    def set_draw_mode(self, mode: str) -> None:
+        self.draw_mode = mode
 
     def current_page(self) -> int:
         """Page dont le haut est visible en haut du viewport (utilisee pour la navigation par page)."""
@@ -65,6 +70,7 @@ class PdfView(QGraphicsView):
         self.verticalScrollBar().setValue(int(self._page_tops[index]))
 
     def load_document(self, pdf_document: PdfDocument) -> None:
+        self._pdf_document = pdf_document
         self.scene_.clear()
         self._bbox_items = []
         self._page_tops = []
@@ -111,9 +117,13 @@ class PdfView(QGraphicsView):
             if page is not None and not isinstance(item_under, BBoxItem):
                 self._drag_start = scene_pos
                 self._drag_page = page
-                self._drag_rect_item = self.scene_.addRect(
-                    QRectF(scene_pos, scene_pos), QPen(self.pen_color, 2)
-                )
+                pen = QPen(self.pen_color, 2)
+                brush = Qt.BrushStyle.NoBrush
+                if self.draw_mode == "highlight":
+                    fill_color = QColor(self.pen_color)
+                    fill_color.setAlpha(90)
+                    brush = QBrush(fill_color)
+                self._drag_rect_item = self.scene_.addRect(QRectF(scene_pos, scene_pos), pen, brush)
                 return
         super().mousePressEvent(event)
 
@@ -138,13 +148,34 @@ class PdfView(QGraphicsView):
             self._drag_page = None
 
             if rect.width() >= MIN_DRAG_PIXELS and rect.height() >= MIN_DRAG_PIXELS:
+                x0 = rect.left() / self.zoom
+                y0 = (rect.top() - page_top) / self.zoom
+                x1 = rect.right() / self.zoom
+                y1 = (rect.bottom() - page_top) / self.zoom
+                text = ""
+                line_rects: list[list[float]] = []
+                if self._pdf_document is not None:
+                    if self.draw_mode == "highlight":
+                        text, line_rects = self._pdf_document.text_selection(page, x0, y0, x1, y1)
+                        if line_rects:
+                            # La bbox englobe les mots reellement selectionnes, pas le
+                            # rectangle libre trace a la souris.
+                            x0 = min(r[0] for r in line_rects)
+                            y0 = min(r[1] for r in line_rects)
+                            x1 = max(r[2] for r in line_rects)
+                            y1 = max(r[3] for r in line_rects)
+                    else:
+                        text = self._pdf_document.extract_text(page, x0, y0, x1, y1)
                 bbox = BBox(
                     page=page,
-                    x0=rect.left() / self.zoom,
-                    y0=(rect.top() - page_top) / self.zoom,
-                    x1=rect.right() / self.zoom,
-                    y1=(rect.bottom() - page_top) / self.zoom,
+                    x0=x0,
+                    y0=y0,
+                    x1=x1,
+                    y1=y1,
                     color=self.pen_color.name(),
+                    kind=self.draw_mode,
+                    text=text,
+                    line_rects=line_rects,
                 )
                 item = BBoxItem(bbox, self.zoom, page_top)
                 self.scene_.addItem(item)

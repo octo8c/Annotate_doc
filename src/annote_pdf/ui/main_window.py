@@ -57,6 +57,14 @@ class MainWindow(QMainWindow):
 
         toolbar.addSeparator()
 
+        self.highlight_action = QAction("Surligner", self)
+        self.highlight_action.setCheckable(True)
+        self.highlight_action.setToolTip("Basculer entre annotation rectangle et surlignage")
+        self.highlight_action.toggled.connect(self._on_highlight_toggled)
+        toolbar.addAction(self.highlight_action)
+
+        toolbar.addSeparator()
+
         prev_action = QAction("<", self)
         prev_action.setToolTip("Page precedente (fleche gauche)")
         prev_action.triggered.connect(self._prev_page)
@@ -104,6 +112,9 @@ class MainWindow(QMainWindow):
         self.bboxes = load_bbox(path)
         self.pdf_view.clear_bboxes()
         self.pdf_view.load_bboxes(self.bboxes)
+
+    def _on_highlight_toggled(self, checked: bool) -> None:
+        self.pdf_view.set_draw_mode("highlight" if checked else "rect")
 
     def _choose_color(self) -> None:
         color = QColorDialog.getColor(self.pdf_view.pen_color, self, "Choisir la couleur des annotations")

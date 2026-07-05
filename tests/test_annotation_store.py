@@ -6,8 +6,8 @@ from annote_pdf.core.models import BBox
 
 def test_save_then_load_round_trip(tmp_path: Path) -> None:
     bboxes = [
-        BBox(page=0, x0=10.0, y0=20.0, x1=110.0, y1=80.0),
-        BBox(page=1, x0=5.0, y0=5.0, x1=50.0, y1=50.0, color="green"),
+        BBox(page=0, x0=10.0, y0=20.0, x1=110.0, y1=80.0, text="Lorem ipsum"),
+        BBox(page=1, x0=5.0, y0=5.0, x1=50.0, y1=50.0, color="green", kind="highlight", text="dolor"),
     ]
     json_path = tmp_path / "annotations.json"
 
@@ -18,8 +18,12 @@ def test_save_then_load_round_trip(tmp_path: Path) -> None:
     assert loaded[0].page == 0
     assert loaded[0].x0 == 10.0
     assert loaded[0].x1 == 110.0
+    assert loaded[0].kind == "rect"
+    assert loaded[0].text == "Lorem ipsum"
     assert loaded[1].id == bboxes[1].id
     assert loaded[1].color == "green"
+    assert loaded[1].kind == "highlight"
+    assert loaded[1].text == "dolor"
 
 
 def test_load_bbox_is_pluggable_json_shape(tmp_path: Path) -> None:
@@ -35,3 +39,5 @@ def test_load_bbox_is_pluggable_json_shape(tmp_path: Path) -> None:
     assert loaded[0].page == 2
     assert loaded[0].color == "green"
     assert loaded[0].id  # auto-genere si absent du JSON
+    assert loaded[0].kind == "rect"
+    assert loaded[0].text == ""

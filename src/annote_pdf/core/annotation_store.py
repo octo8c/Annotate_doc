@@ -7,7 +7,13 @@ from .models import BBox
 
 # Format JSON (input == output, pour permettre un recharge simple) :
 # [
-#   {"page": 0, "x0": 100.0, "y0": 200.0, "x1": 180.0, "y1": 240.0, "color": "green", "id": "..."},
+#   {
+#     "page": 0, "x0": 100.0, "y0": 200.0, "x1": 180.0, "y1": 240.0,
+#     "color": "green", "id": "...",
+#     "kind": "rect",       # "rect" ou "highlight"
+#     "text": "...",        # texte du PDF sous la bbox (get_text(clip=...))
+#     "line_rects": [],     # highlight epouse-texte : un rect [x0,y0,x1,y1] par ligne
+#   },
 #   ...
 # ]
 
