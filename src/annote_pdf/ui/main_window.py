@@ -203,6 +203,7 @@ class MainWindow(QMainWindow):
         pdf_out, _ = QFileDialog.getSaveFileName(self, "Sauvegarder le PDF annote", "", "PDF (*.pdf)")
         if not pdf_out:
             return
+        pdf_out = str(Path(pdf_out).with_suffix(".pdf"))
         json_out = str(Path(pdf_out).with_suffix(".json"))
         self.pdf_document.save_annotated(pdf_out, self.bboxes)
         save_bbox(json_out, self.bboxes)
