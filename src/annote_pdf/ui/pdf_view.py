@@ -23,6 +23,7 @@ class PdfView(QGraphicsView):
 
     bbox_created = Signal(object)  # BBox
     bbox_deleted = Signal(str)  # bbox.id
+    bbox_selected = Signal(object)  # BBox ou None (aucune selection / plusieurs a la fois)
 
     def __init__(self) -> None:
         super().__init__()
@@ -39,6 +40,7 @@ class PdfView(QGraphicsView):
         self._drag_start = None
         self._drag_page: int | None = None
         self._drag_rect_item: QGraphicsRectItem | None = None
+        self.scene_.selectionChanged.connect(self._on_selection_changed)
 
     @property
     def page_count(self) -> int:
@@ -71,6 +73,7 @@ class PdfView(QGraphicsView):
 
     def load_document(self, pdf_document: PdfDocument) -> None:
         self._pdf_document = pdf_document
+        self.scene_.clearSelection()
         self.scene_.clear()
         self._bbox_items = []
         self._page_tops = []
@@ -91,9 +94,14 @@ class PdfView(QGraphicsView):
         self.scene_.setSceneRect(QRectF(0, 0, max_width, max(y - PAGE_GAP, 0)))
 
     def clear_bboxes(self) -> None:
+        self.scene_.clearSelection()
         for item in self._bbox_items:
             self.scene_.removeItem(item)
         self._bbox_items = []
+
+    def _on_selection_changed(self) -> None:
+        selected = [item for item in self.scene_.selectedItems() if isinstance(item, BBoxItem)]
+        self.bbox_selected.emit(selected[0].bbox if len(selected) == 1 else None)
 
     def load_bboxes(self, bboxes: list[BBox]) -> None:
         for bbox in bboxes:
@@ -114,6 +122,10 @@ class PdfView(QGraphicsView):
             scene_pos = self.mapToScene(event.pos())
             page = self._page_at_scene_y(scene_pos.y())
             item_under = self.itemAt(event.pos())
+            if not isinstance(item_under, BBoxItem):
+                # Clic en dehors d'une annotation existante : on desactive la selection
+                # courante (et donc le champ de contenu associe dans le panneau lateral).
+                self.scene_.clearSelection()
             if page is not None and not isinstance(item_under, BBoxItem):
                 self._drag_start = scene_pos
                 self._drag_page = page
@@ -181,6 +193,9 @@ class PdfView(QGraphicsView):
                 self.scene_.addItem(item)
                 self._bbox_items.append(item)
                 self.bbox_created.emit(bbox)
+                # Selectionne immediatement la nouvelle bbox pour que le champ de saisie
+                # du contenu apparaisse tout de suite dans le panneau lateral.
+                item.setSelected(True)
             return
         super().mouseReleaseEvent(event)
 
@@ -202,3 +217,7 @@ class PdfView(QGraphicsView):
             self.scene_.removeItem(item)
             self._bbox_items.remove(item)
             self.bbox_deleted.emit(item.bbox.id)
+        if selected:
+            # removeItem() ne declenche pas toujours selectionChanged : on force la mise
+            # a jour du panneau lateral pour qu'il se ferme.
+            self._on_selection_changed()

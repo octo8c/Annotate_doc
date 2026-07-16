@@ -2,21 +2,30 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QIntValidator
 from PySide6.QtWidgets import (
     QColorDialog,
+    QDockWidget,
     QFileDialog,
     QLabel,
     QLineEdit,
     QMainWindow,
     QMessageBox,
+    QTextEdit,
     QToolBar,
+    QVBoxLayout,
+    QWidget,
 )
 
 from ..core.annotation_store import load_bbox, save_bbox
 from ..core.models import BBox
 from ..core.pdf_document import PdfDocument
 from .pdf_view import PdfView
+
+# Couleurs du panneau lateral, assorties au fond sombre de la zone de rendu PDF.
+PANEL_BACKGROUND = "#1e1e1e"
+PANEL_TEXT_BACKGROUND = "#2b2b2b"
 
 
 class MainWindow(QMainWindow):
@@ -28,14 +37,42 @@ class MainWindow(QMainWindow):
         self.pdf_document = PdfDocument()
         self.pdf_path: Path | None = None
         self.bboxes: list[BBox] = []  # source de verite : toutes les pages, pas seulement la page affichee
+        self._selected_bbox: BBox | None = None
 
         self.pdf_view = PdfView()
         self.pdf_view.bbox_created.connect(self._on_bbox_created)
         self.pdf_view.bbox_deleted.connect(self._on_bbox_deleted)
+        self.pdf_view.bbox_selected.connect(self._on_bbox_selected)
         self.pdf_view.verticalScrollBar().valueChanged.connect(self._on_scroll_changed)
         self.setCentralWidget(self.pdf_view)
 
         self._build_toolbar()
+        self._build_annotation_panel()
+
+    def _build_annotation_panel(self) -> None:
+        """Panneau lateral sombre (masque par defaut) pour saisir le contenu d'une annotation."""
+        panel = QWidget()
+        panel.setStyleSheet(f"background-color: {PANEL_BACKGROUND};")
+        layout = QVBoxLayout(panel)
+
+        label = QLabel("Contenu de l'annotation")
+        label.setStyleSheet("color: white;")
+        layout.addWidget(label)
+
+        self.annotation_text_edit = QTextEdit()
+        self.annotation_text_edit.setPlaceholderText("Tapez ici ce qu'il y a dans la cellule...")
+        self.annotation_text_edit.setStyleSheet(
+            f"background-color: {PANEL_TEXT_BACKGROUND}; color: white; border: 1px solid #555;"
+        )
+        self.annotation_text_edit.textChanged.connect(self._on_annotation_text_changed)
+        layout.addWidget(self.annotation_text_edit)
+
+        self.annotation_dock = QDockWidget("Annotation", self)
+        self.annotation_dock.setAllowedAreas(Qt.DockWidgetArea.RightDockWidgetArea)
+        self.annotation_dock.setFeatures(QDockWidget.DockWidgetFeature.NoDockWidgetFeatures)
+        self.annotation_dock.setWidget(panel)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.annotation_dock)
+        self.annotation_dock.hide()
 
     def _build_toolbar(self) -> None:
         toolbar = QToolBar("Actions")
@@ -144,6 +181,20 @@ class MainWindow(QMainWindow):
 
     def _on_bbox_deleted(self, bbox_id: str) -> None:
         self.bboxes = [b for b in self.bboxes if b.id != bbox_id]
+
+    def _on_bbox_selected(self, bbox: BBox | None) -> None:
+        self._selected_bbox = bbox
+        if bbox is None:
+            self.annotation_dock.hide()
+            return
+        self.annotation_text_edit.blockSignals(True)
+        self.annotation_text_edit.setPlainText(bbox.text)
+        self.annotation_text_edit.blockSignals(False)
+        self.annotation_dock.show()
+
+    def _on_annotation_text_changed(self) -> None:
+        if self._selected_bbox is not None:
+            self._selected_bbox.text = self.annotation_text_edit.toPlainText()
 
     def _save(self) -> None:
         if self.pdf_path is None:
