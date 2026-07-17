@@ -11,6 +11,7 @@ Dependances :
 """
 from __future__ import annotations
 
+import base64
 import io
 import json
 import uuid
@@ -247,15 +248,42 @@ with nav4:
     st.markdown(f"**Page {ss.page + 1} / {page_count}** — {ss.pdf_name}")
 
 # --- Canvas de dessin sur la page rendue -------------------------------------
+RIGHT_MARGIN = 60  # bande blanche a droite de la page (pixels)
+
 page_image = render_page_png(doc, ss.page, zoom)
 
+# Page posee sur un fond blanc plus large : joli rectangle blanc avec marge a droite
+canvas_width = page_image.width + RIGHT_MARGIN
+canvas_height = page_image.height
+
+# La page est injectee DANS le dessin initial du canvas, en data-URL base64.
+# (Le parametre background_image de streamlit-drawable-canvas est casse avec les
+# versions recentes de Streamlit : l'URL interne generee n'est plus servie.)
+buf = io.BytesIO()
+page_image.save(buf, format="PNG")
+page_b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+
+background_object = {
+    "type": "image",
+    "left": 0,
+    "top": 0,
+    "width": page_image.width,
+    "height": page_image.height,
+    "scaleX": 1,
+    "scaleY": 1,
+    "src": f"data:image/png;base64,{page_b64}",
+    "selectable": False,
+    "evented": False,
+    "hoverCursor": "crosshair",
+}
+
 # Annotations existantes de la page, pre-dessinees comme objets du canvas
-initial_objects = []
+annotation_objects = []
 for bbox in ss.bboxes:
     if bbox.page != ss.page:
         continue
     color = "#FFD700" if bbox.kind == "highlight" else stroke_color
-    initial_objects.append({
+    annotation_objects.append({
         "type": "rect",
         "left": bbox.x0 * zoom,
         "top": bbox.y0 * zoom,
@@ -266,17 +294,19 @@ for bbox in ss.bboxes:
         "strokeWidth": 2,
     })
 
+initial_objects = [background_object] + annotation_objects
+
 col_canvas, col_panel = st.columns([3, 1])
 
 with col_canvas:
     canvas_result = st_canvas(
-        background_image=page_image,
+        background_color="#FFFFFF",
         drawing_mode="rect",
         stroke_color="#FFD700" if draw_kind == "highlight" else stroke_color,
         stroke_width=2,
         fill_color="rgba(255, 215, 0, 0.3)" if draw_kind == "highlight" else "rgba(0,0,0,0)",
-        height=page_image.height,
-        width=page_image.width,
+        height=canvas_height,
+        width=canvas_width,
         initial_drawing={"objects": initial_objects},
         key=f"canvas_{ss.page}_{ss.canvas_key}",
         update_streamlit=True,
