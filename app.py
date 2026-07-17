@@ -19,7 +19,32 @@ from dataclasses import asdict, dataclass, field
 import fitz  # PyMuPDF
 import streamlit as st
 from PIL import Image
-from streamlit_drawable_canvas import st_canvas
+
+# --- Patch de compatibilite -------------------------------------------------
+# streamlit-drawable-canvas (non maintenu) appelle streamlit.elements.image.image_to_url,
+# supprime dans les versions recentes de Streamlit (deplace vers elements.lib.image_utils,
+# avec une signature differente). On reinjecte un adaptateur avant d'importer st_canvas.
+import streamlit.elements.image as _st_image  # noqa: E402
+
+if not hasattr(_st_image, "image_to_url"):
+    from streamlit.elements.lib.image_utils import image_to_url as _image_to_url
+
+    try:
+        from streamlit.elements.lib.layout_utils import LayoutConfig as _LayoutConfig
+
+        def _compat_image_to_url(image, width, clamp, channels, output_format, image_id):
+            return _image_to_url(
+                image, _LayoutConfig(width=width), clamp, channels, output_format, image_id
+            )
+    except ImportError:  # versions intermediaires : ancienne signature, nouveau module
+
+        def _compat_image_to_url(image, width, clamp, channels, output_format, image_id):
+            return _image_to_url(image, width, clamp, channels, output_format, image_id)
+
+    _st_image.image_to_url = _compat_image_to_url
+# ---------------------------------------------------------------------------
+
+from streamlit_drawable_canvas import st_canvas  # noqa: E402
 
 GREEN = (0, 1, 0)
 YELLOW = (1, 1, 0)
