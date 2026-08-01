@@ -38,6 +38,7 @@ class MainWindow(QMainWindow):
         self.pdf_path: Path | None = None
         self.bboxes: list[BBox] = []  # source de verite : toutes les pages, pas seulement la page affichee
         self._selected_bbox: BBox | None = None
+        self._annotation_panel_enabled = True  # bascule via la fleche de la barre d'outils
 
         self.pdf_view = PdfView()
         self.pdf_view.bbox_created.connect(self._on_bbox_created)
@@ -91,6 +92,17 @@ class MainWindow(QMainWindow):
         color_action = QAction("Couleur", self)
         color_action.triggered.connect(self._choose_color)
         toolbar.addAction(color_action)
+
+        toolbar.addSeparator()
+
+        self.annotation_toggle_action = QAction("◀", self)
+        self.annotation_toggle_action.setCheckable(True)
+        self.annotation_toggle_action.setChecked(True)
+        self.annotation_toggle_action.setToolTip(
+            "Autoriser/interdire l'acces au panneau d'annotation lors de la selection d'une bbox"
+        )
+        self.annotation_toggle_action.toggled.connect(self._on_annotation_toggle)
+        toolbar.addAction(self.annotation_toggle_action)
 
         toolbar.addSeparator()
 
@@ -153,6 +165,15 @@ class MainWindow(QMainWindow):
     def _on_highlight_toggled(self, checked: bool) -> None:
         self.pdf_view.set_draw_mode("highlight" if checked else "rect")
 
+    def _on_annotation_toggle(self, checked: bool) -> None:
+        self.annotation_toggle_action.setText("◀" if checked else "▶")
+        self._annotation_panel_enabled = checked
+        if checked:
+            if self._selected_bbox is not None:
+                self.annotation_dock.show()
+        else:
+            self.annotation_dock.hide()
+
     def _choose_color(self) -> None:
         color = QColorDialog.getColor(self.pdf_view.pen_color, self, "Choisir la couleur des annotations")
         if color.isValid():
@@ -184,7 +205,7 @@ class MainWindow(QMainWindow):
 
     def _on_bbox_selected(self, bbox: BBox | None) -> None:
         self._selected_bbox = bbox
-        if bbox is None:
+        if bbox is None or not self._annotation_panel_enabled:
             self.annotation_dock.hide()
             return
         self.annotation_text_edit.blockSignals(True)
